@@ -4,7 +4,6 @@ module Snapshot where
 
 import Data.List.Split (splitOn)
 import Text.Regex.PCRE.Heavy (scan, re)
-import Text.Read (readMaybe)
 
 
 -- TODO make sure this is properly ordered by date
@@ -39,12 +38,12 @@ parseSnapshotDates dateStr = sequence $ parseDate <$> dates
 
     parseDate :: String -> Maybe SnapshotDate
     parseDate s = case scan dateRegex s of
-                      (_, y:mo:d:h:mi:s:[]):_ -> SnapshotDate <$> readMaybe y
-                                                              <*> readMaybe mo
-                                                              <*> readMaybe d
-                                                              <*> readMaybe h
-                                                              <*> readMaybe mi
-                                                              <*> readMaybe s
+                      (_, y:mo:d:h:mi:s:[]):_ -> Just $ SnapshotDate (read y)
+                                                                     (read mo)
+                                                                     (read d)
+                                                                     (read h)
+                                                                     (read mi)
+                                                                     (read s)
                       _ -> Nothing
       where
         dateRegex = [re|^(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})$|]
