@@ -2,23 +2,11 @@ module Main where
 
 import Snapshot
 
-import Control.Monad (when)
-import Data.Monoid ((<>))
-import System.Exit (ExitCode (ExitSuccess), exitWith)
-import System.Process (readProcessWithExitCode)
-
-printAndExit :: String -> ExitCode -> IO ()
-printAndExit errMsg exitCode = do
-    putStrLn errMsg
-    exitWith exitCode
-
+ -- TODO we need to be an either instead of a maybe here
 main :: IO ()
 main = do
-    let tmutil = "/usr/bin/tmutil"
-    let args   = ["listlocalsnapshotdates"]
-    let stdin  = ""
-    (code, stdout, stderr) <- readProcessWithExitCode tmutil args stdin
-    when (code /= ExitSuccess)
-      (printAndExit ("Error running tmutil: " <> stderr) code)
-    let snapshotDates = parseSnapshotDates stdout
-    putStrLn $ show snapshotDates
+    snapshots <- listSnapshots
+    case snapshots of
+        Just s  -> putStrLn $ show s
+        Nothing -> putStrLn "Error parsing snapshot dates"
+--main = createSnapshot
