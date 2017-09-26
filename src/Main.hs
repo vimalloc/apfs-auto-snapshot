@@ -1,56 +1,74 @@
 module Main where
 
-import qualified Data.ConfigFile as CP
 import           Data.Either.Utils (forceEither) -- provided by MissingH
-import           Data.Monoid ((<>))
+import           Data.Semigroup ((<>))
+import           Options.Applicative
 import           System.Exit (ExitCode (ExitSuccess, ExitFailure), exitWith)
 
-data SnapshotLimitConfig = SnapshotLimitConfig
-    { yearly       :: !Int
-    , monthly      :: !Int
-    , weekly       :: !Int
-    , daily        :: !Int
-    , hourly       :: !Int
-    , quaterHourly :: !Int
+-- What categories the current snapshot will fall under
+data CliFlags = CliFlags
+    { yearly        :: Bool
+    , monthly       :: Bool
+    , weekly        :: Bool
+    , daily         :: Bool
+    , hourly        :: Bool
+    , quater_hourly :: Bool
     } deriving (Show)
 
 
+cliParser :: Parser CliFlags
+cliParser = CliFlags
+    <$> switch
+        ( long "yearly"
+       <> help "This snapshot is a yearly snapshot")
+    <*> switch
+        ( long "monthly"
+       <> help "This snapshot is a monthly snapshot")
+    <*> switch
+        ( long "weekly"
+       <> help "This snapshot is a weekly snapshot")
+    <*> switch
+        ( long "daily"
+       <> help "This snapshot is a daily snapshot")
+    <*> switch
+        ( long "hourly"
+       <> help "This snapshot is a hourly snapshot")
+    <*> switch
+        ( long "quater_hourly"
+       <> help "This snapshot is a quater_hourly snapshot")
+
+greet :: CliFlags -> IO ()
+greet (CliFlags False False False False False False) =
+    printAndExit "Specify at least one snapshot type (see --help)"
+greet _ = return ()
+
 printAndExit :: String -> IO ()
 printAndExit errMsg = do
-    putStrLn errMsg
+    putStrLn $ "Error: " ++ errMsg
     exitWith $ ExitFailure 1
 
--- TODO get rid of forceEither here
-getConfigParser :: String -> IO CP.ConfigParser
-getConfigParser filepath = forceEither <$> CP.readfile CP.emptyCP filepath
+main :: IO ()
+main = greet =<< execParser opts
+  where
+    opts = info (cliParser <**> helper)
+      ( fullDesc
+     <> progDesc "Create a new snapshot in the given timelines"
+     <> header "apfs-auto-snapshot - Automaticaaly craete and delete APFS snapshots")
 
--- TODO get rid of forceEither here as well
-getTimelineConfig :: CP.ConfigParser -> Either CP.CPError SnapshotLimitConfig
-getTimelineConfig cp = do
-    keep_yearly        <- CP.get cp "TIMELINE" "keep_yearly"
-    keep_monthly       <- CP.get cp "TIMELINE" "keep_monthly"
-    keep_weekly        <- CP.get cp "TIMELINE" "keep_weekly"
-    keep_daily         <- CP.get cp "TIMELINE" "keep_daily"
-    keep_hourly        <- CP.get cp "TIMELINE" "keep_hourly"
-    keep_quater_hourly <- CP.get cp "TIMELINE" "keep_quater_hourly"
-    return $  SnapshotLimitConfig keep_yearly keep_monthly keep_weekly
-                                  keep_daily keep_hourly keep_quater_hourly
-
+{-
 main :: IO ()
 main = do
     cp <- getConfigParser "apfs-auto-snapshot.cfg"
     let snapLimitConfig = forceEither $ getTimelineConfig cp
     putStrLn $ show snapLimitConfig
 
-{-
     -- Parse command line options
     snapshots <- listSnapshots
     case snapshots of
         Right s -> putStrLn $ show s
-        Left s  -> printAndExit $ "Error: " <> s
+        Left s  -> printAndExit s
     snapshot <- createSnapshot
     case snapshot of
-        Right s -> putStrLn $ "Created new snapshot: " <> show s
-        Left s  -> printAndExit $ "Error: " <> s
+        Right s -> putStrLn $ "Created new snapshot: " ++ show s
+        Left s  -> printAndExit s
 -}
-
