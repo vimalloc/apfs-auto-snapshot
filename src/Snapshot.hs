@@ -11,7 +11,6 @@ import Text.Printf (printf)
 import Text.Regex.PCRE.Heavy (scan, re)
 
 
-
 -- TODO make sure this is properly ordered by date
 data SnapshotDate = SnapshotDate
     { year   :: !Int
@@ -26,17 +25,16 @@ instance Show SnapshotDate where
     show d = printf "%04d-%02d-%02d-%02d%02d%02d" (year d) (month d) (day d)
                                                   (hour d) (minute d) (second d)
 
-data SnapshotLimit = Yearly
-                   | Monthly
-                   | Weekly
-                   | Daily
-                   | Hourly
-                   | QuaterHourly
-
-data Snapshot = Snapshot
-    { date  :: SnapshotDate
-    , limit :: SnapshotLimit
-    }
+-- What categories the current snapshot will fall under
+-- TODO make this a better name
+data SnapshotType = SnapshotType
+    { yearly        :: Bool
+    , monthly       :: Bool
+    , weekly        :: Bool
+    , daily         :: Bool
+    , hourly        :: Bool
+    , quater_hourly :: Bool
+    } deriving (Show)
 
 
 parseSnapshotDates :: [String] -> Either String [SnapshotDate]
@@ -54,7 +52,6 @@ parseDate s = case scan dateRegex s of
   where
     dateRegex = [re|(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})|]
 
-
 -- TODO have basically teh same code for checking exit status. Can we generalize it?
 listSnapshots :: IO (Either String [SnapshotDate])
 listSnapshots = do
@@ -70,15 +67,6 @@ listSnapshots = do
             let dates = tail . init $ splitOn "\n" stdout
             return $ parseSnapshotDates dates
 
-
--- TODO need to save current snapshot in persistant store somewhere, so we can
---      keep track of what snapshots this made (and will eventually delete as
---      the time window shifts), and which snapshots were user or system made
---      (and thus shouldn't be deleted by us). In that store, we need to
---      include what limits this snapshot applies to (a single snapshot could
---      be part of  hourly, daily, weekly, etc). If rotating this snapshot
---      should be rotated out of the hourly limits, but is still there for the
---      daily limits, we cannot remove it yet.
 createSnapshot :: IO (Either String SnapshotDate)
 createSnapshot = do
     let tmutil = "/usr/bin/tmutil"
@@ -89,3 +77,20 @@ createSnapshot = do
         ExitFailure _ -> return $ Left ("tmutil exited with code " <> show code
                                         <> ": " <> stderr)
         ExitSuccess   -> return $ parseDate stdout
+
+storeSnapshot :: SnapshotDate -> SnapshotType -> IO ()
+storeSnapshot s flags = do
+    -- TODO Initially store the snapshot in the database
+    -- TODO Actually associate this snapshot with the given flags
+    when (yearly flags)
+        (putStrLn "Yearly")
+    when (monthly flags)
+        (putStrLn "Monthly")
+    when (weekly flags)
+        (putStrLn "Weekly")
+    when (daily flags)
+        (putStrLn "Daily")
+    when (hourly flags)
+        (putStrLn "Hourly")
+    when (quater_hourly flags)
+        (putStrLn "Quater Hourly")

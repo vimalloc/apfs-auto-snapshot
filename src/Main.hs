@@ -1,23 +1,17 @@
 module Main where
 
-import           Data.Either.Utils (forceEither) -- provided by MissingH
-import           Data.Semigroup ((<>))
-import           Options.Applicative
-import           System.Exit (ExitCode (ExitSuccess, ExitFailure), exitWith)
+import Snapshot
 
--- What categories the current snapshot will fall under
-data CliFlags = CliFlags
-    { yearly        :: Bool
-    , monthly       :: Bool
-    , weekly        :: Bool
-    , daily         :: Bool
-    , hourly        :: Bool
-    , quater_hourly :: Bool
-    } deriving (Show)
+import Data.Either.Utils (forceEither) -- provided by MissingH
+import Data.Semigroup ((<>))
+import Options.Applicative
+import System.Exit (ExitCode (ExitSuccess, ExitFailure), exitWith)
 
 
-cliParser :: Parser CliFlags
-cliParser = CliFlags
+-- TODO use submcommands, so you can have other commands for explictly
+--      pruning, listing, purging, etc.
+cliParser :: Parser SnapshotType
+cliParser = SnapshotType
     <$> switch
         ( long "yearly"
        <> help "This snapshot is a yearly snapshot")
@@ -37,10 +31,20 @@ cliParser = CliFlags
         ( long "quater_hourly"
        <> help "This snapshot is a quater_hourly snapshot")
 
-greet :: CliFlags -> IO ()
-greet (CliFlags False False False False False False) =
-    printAndExit "Specify at least one snapshot type (see --help)"
-greet _ = return ()
+handleCli :: SnapshotType -> IO ()
+handleCli (SnapshotType False False False False False False) =
+              printAndExit "Specify at least one snapshot type (see --help)"
+handleCli types = do
+    snapshot <- createSnapshot
+    case snapshot of
+        Left er -> printAndExit er
+        Right s -> storeSnapshot s types
+    -- TODO save this snapshot in the database with the given types
+    -- TODO remove any snapshots from the database that don't exist
+    --      in time machine any more (deleted outside of this program)
+    -- TODO remove any snapshots from the database AND time machine that are
+    --      now outside of the floating window limit
+
 
 printAndExit :: String -> IO ()
 printAndExit errMsg = do
@@ -48,27 +52,9 @@ printAndExit errMsg = do
     exitWith $ ExitFailure 1
 
 main :: IO ()
-main = greet =<< execParser opts
+main = handleCli =<< execParser opts
   where
     opts = info (cliParser <**> helper)
       ( fullDesc
      <> progDesc "Create a new snapshot in the given timelines"
      <> header "apfs-auto-snapshot - Automaticaaly craete and delete APFS snapshots")
-
-{-
-main :: IO ()
-main = do
-    cp <- getConfigParser "apfs-auto-snapshot.cfg"
-    let snapLimitConfig = forceEither $ getTimelineConfig cp
-    putStrLn $ show snapLimitConfig
-
-    -- Parse command line options
-    snapshots <- listSnapshots
-    case snapshots of
-        Right s -> putStrLn $ show s
-        Left s  -> printAndExit s
-    snapshot <- createSnapshot
-    case snapshot of
-        Right s -> putStrLn $ "Created new snapshot: " ++ show s
-        Left s  -> printAndExit s
--}
