@@ -5,7 +5,7 @@ module Snapshot where
 import Control.Monad (when)
 import Data.List.Split (splitOn)
 import Data.Monoid ((<>))
-import System.Exit (ExitCode (ExitSuccess), exitWith)
+import System.Exit (ExitCode (ExitSuccess, ExitFailure))
 import System.Process (readProcessWithExitCode)
 import Text.Printf (printf)
 import Text.Regex.PCRE.Heavy (scan, re)
@@ -39,40 +39,37 @@ data Snapshot = Snapshot
     }
 
 
--- TODO should probably use either here
-parseSnapshotDates :: [String] -> Maybe [SnapshotDate]
+parseSnapshotDates :: [String] -> Either String [SnapshotDate]
 parseSnapshotDates dates = sequence $ parseDate <$> dates
+
+parseDate :: String -> Either String SnapshotDate
+parseDate s = case scan dateRegex s of
+                  (_, y:mo:d:h:mi:s:[]):_ -> Right $ SnapshotDate (read y)
+                                                                  (read mo)
+                                                                  (read d)
+                                                                  (read h)
+                                                                  (read mi)
+                                                                  (read s)
+                  _ -> Left $ s <> " is not in the format YYYY-MM-DD-HHMMSS."
   where
-    parseDate :: String -> Maybe SnapshotDate
-    parseDate s = case scan dateRegex s of
-                      (_, y:mo:d:h:mi:s:[]):_ -> Just $ SnapshotDate (read y)
-                                                                     (read mo)
-                                                                     (read d)
-                                                                     (read h)
-                                                                     (read mi)
-                                                                     (read s)
-                      _                       -> Nothing
-      where
-        dateRegex = [re|^(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})$|]
+    dateRegex = [re|(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})|]
 
-printAndExit :: String -> ExitCode -> IO ()
-printAndExit errMsg exitCode = do
-    putStrLn errMsg
-    exitWith exitCode
 
--- TODO should propbably use either here too
-listSnapshots :: IO (Maybe [SnapshotDate])
+-- TODO have basically teh same code for checking exit status. Can we generalize it?
+listSnapshots :: IO (Either String [SnapshotDate])
 listSnapshots = do
     let tmutil = "/usr/bin/tmutil"
     let args   = ["listlocalsnapshotdates"]
     let stdin  = ""
     (code, stdout, stderr) <- readProcessWithExitCode tmutil args stdin
-    when (code /= ExitSuccess)
-      (printAndExit ("Error running tmutil: " <> stderr) code)
+    case code of
+        ExitFailure _ -> return $ Left ("tmutil exited with code " <> show code
+                                        <> ": " <> stderr)
+        ExitSuccess   -> do
+            -- Strip header and trailing newline
+            let dates = tail . init $ splitOn "\n" stdout
+            return $ parseSnapshotDates dates
 
-    -- Need to strip the header in stdout and the trailing newline
-    let dates = tail . init $ splitOn "\n" stdout
-    return $ parseSnapshotDates dates
 
 -- TODO need to save current snapshot in persistant store somewhere, so we can
 --      keep track of what snapshots this made (and will eventually delete as
@@ -82,12 +79,13 @@ listSnapshots = do
 --      be part of  hourly, daily, weekly, etc). If rotating this snapshot
 --      should be rotated out of the hourly limits, but is still there for the
 --      daily limits, we cannot remove it yet.
--- TODO also throw this in the Either monad, raise errors, etc
-createSnapshot :: IO ()
+createSnapshot :: IO (Either String SnapshotDate)
 createSnapshot = do
     let tmutil = "/usr/bin/tmutil"
     let args   = ["localsnapshot"]
     let stdin  = ""
     (code, stdout, stderr) <- readProcessWithExitCode tmutil args stdin
-    when (code /= ExitSuccess)
-      (printAndExit ("Error running tmutil: " <> stderr) code)
+    case code of
+        ExitFailure _ -> return $ Left ("tmutil exited with code " <> show code
+                                        <> ": " <> stderr)
+        ExitSuccess   -> return $ parseDate stdout

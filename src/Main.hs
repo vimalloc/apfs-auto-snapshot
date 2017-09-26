@@ -1,12 +1,25 @@
 module Main where
 
+import Data.Monoid ((<>))
+import System.Exit (ExitCode (ExitSuccess, ExitFailure), exitWith)
+
 import Snapshot
 
- -- TODO we need to be an either instead of a maybe here
+printAndExit :: String -> IO ()
+printAndExit errMsg = do
+    putStrLn errMsg
+    exitWith $ ExitFailure 1
+
 main :: IO ()
 main = do
     snapshots <- listSnapshots
     case snapshots of
-        Just s  -> putStrLn $ show s
-        Nothing -> putStrLn "Error parsing snapshot dates"
---main = createSnapshot
+        Right s -> putStrLn $ show s
+        Left s  -> printAndExit $ "Error: " <> s
+{-
+main = do
+    snapshot <- createSnapshot
+    case snapshot of
+        Right s -> putStrLn $ "Created new snapshot: " <> show s
+        Left s  -> printAndExit $ "Error: " <> s
+-}
