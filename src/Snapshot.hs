@@ -5,9 +5,10 @@ module Snapshot where
 import Control.Monad (when)
 import Data.List.Split (splitOn)
 import Data.Monoid ((<>))
-import Text.Regex.PCRE.Heavy (scan, re)
 import System.Exit (ExitCode (ExitSuccess), exitWith)
 import System.Process (readProcessWithExitCode)
+import Text.Printf (printf)
+import Text.Regex.PCRE.Heavy (scan, re)
 
 
 
@@ -19,7 +20,11 @@ data SnapshotDate = SnapshotDate
     , hour   :: !Int
     , minute :: !Int
     , second :: !Int
-    } deriving (Eq, Show, Ord)
+    } deriving (Eq, Ord)
+
+instance Show SnapshotDate where
+    show d = printf "%04d-%02d-%02d-%02d%02d%02d" (year d) (month d) (day d)
+                                                  (hour d) (minute d) (second d)
 
 data SnapshotLimit = Yearly
                    | Monthly
@@ -35,12 +40,9 @@ data Snapshot = Snapshot
 
 
 -- TODO should probably use either here
-parseSnapshotDates :: String -> Maybe [SnapshotDate]
-parseSnapshotDates dateStr = sequence $ parseDate <$> dates
+parseSnapshotDates :: [String] -> Maybe [SnapshotDate]
+parseSnapshotDates dates = sequence $ parseDate <$> dates
   where
-    -- Need to strip the header in stdout and the trailing newline
-    dates = tail . init $ splitOn "\n" dateStr
-
     parseDate :: String -> Maybe SnapshotDate
     parseDate s = case scan dateRegex s of
                       (_, y:mo:d:h:mi:s:[]):_ -> Just $ SnapshotDate (read y)
@@ -67,7 +69,10 @@ listSnapshots = do
     (code, stdout, stderr) <- readProcessWithExitCode tmutil args stdin
     when (code /= ExitSuccess)
       (printAndExit ("Error running tmutil: " <> stderr) code)
-    return $ parseSnapshotDates stdout
+
+    -- Need to strip the header in stdout and the trailing newline
+    let dates = tail . init $ splitOn "\n" stdout
+    return $ parseSnapshotDates dates
 
 -- TODO need to save current snapshot in persistant store somewhere, so we can
 --      keep track of what snapshots this made (and will eventually delete as
