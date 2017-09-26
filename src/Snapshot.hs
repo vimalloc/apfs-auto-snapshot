@@ -2,6 +2,7 @@
 
 module Snapshot where
 
+import Data.List.Split (splitOn)
 import Text.Regex.PCRE.Heavy (scan, re)
 import Text.Read (readMaybe)
 
@@ -30,9 +31,12 @@ data Snapshot = Snapshot
 
 
 -- TODO should probably use either here
-parseSnapshotDates :: [String] -> Maybe [SnapshotDate]
-parseSnapshotDates dates = sequence $ parseDate <$> dates
+parseSnapshotDates :: String -> Maybe [SnapshotDate]
+parseSnapshotDates dateStr = sequence $ parseDate <$> dates
   where
+    -- Need to strip the header in stdout and the trailing newline
+    dates = tail . init $ splitOn "\n" dateStr
+
     parseDate :: String -> Maybe SnapshotDate
     parseDate s = case scan dateRegex s of
                       (_, y:mo:d:h:mi:s:[]):_ -> SnapshotDate <$> readMaybe y
