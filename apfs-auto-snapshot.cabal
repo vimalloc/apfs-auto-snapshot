@@ -61,6 +61,8 @@ executable apfs-auto-snapshot
                      , pcre-heavy
                      , process
                      , split
+                     , ConfigFile
+                     , MissingH
   
   -- Directories containing source files.
   hs-source-dirs:      src
