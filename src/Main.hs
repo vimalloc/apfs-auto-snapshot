@@ -4,14 +4,13 @@ import Snapshot
 
 import Control.Monad (when)
 import Data.Monoid ((<>))
-import System.Exit
-import System.Process
+import System.Exit (ExitCode (ExitSuccess), exitWith)
+import System.Process (readProcessWithExitCode)
 
 printAndExit :: String -> ExitCode -> IO ()
-printAndExit s c = do
-    putStrLn s
-    exitWith c
-
+printAndExit errMsg exitCode = do
+    putStrLn errMsg
+    exitWith exitCode
 
 main :: IO ()
 main = do
