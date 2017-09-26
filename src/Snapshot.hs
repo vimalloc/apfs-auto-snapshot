@@ -1,8 +1,10 @@
 {-# LANGUAGE QuasiQuotes, FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Snapshot where
 
 import Control.Monad (when)
+import Database.SQLite.Simple
 import Data.List.Split (splitOn)
 import Data.Monoid ((<>))
 import System.Exit (ExitCode (ExitSuccess, ExitFailure))
@@ -26,7 +28,6 @@ instance Show SnapshotDate where
                                                   (hour d) (minute d) (second d)
 
 -- What categories the current snapshot will fall under
--- TODO make this a better name
 data SnapshotType = SnapshotType
     { yearly        :: Bool
     , monthly       :: Bool
@@ -78,19 +79,54 @@ createSnapshot = do
                                         <> ": " <> stderr)
         ExitSuccess   -> return $ parseDate stdout
 
+
+data IdField = IdField
+    { primaryKey :: Int
+    } deriving (Show)
+
+instance FromRow IdField where
+  fromRow = IdField <$> field
+
+
+-- TODO switch to opaleye or something that gives us better type support
 storeSnapshot :: SnapshotDate -> SnapshotType -> IO ()
 storeSnapshot s flags = do
-    -- TODO Initially store the snapshot in the database
-    -- TODO Actually associate this snapshot with the given flags
+    -- Open db with foreign key support
+    conn <- open "apfs-auto-snapshot.db"
+    execute_ conn "PRAGMA foreign_keys = ON"
+
+    -- Insert the snapshot and get the id of newly inserted row
+    execute conn "INSERT INTO snapshots (name) VALUES (?)"
+                 (Only (show s :: String))
+    res <- query_ conn "SELECT last_insert_rowid()" :: IO [IdField]
+    let snapshot_id = primaryKey $ head res
+
+    -- Insert the types of snapshots this is for in the timelines. Can be
+    -- multiple timelines at the same time.
     when (yearly flags)
-        (putStrLn "Yearly")
+        (execute conn
+        "INSERT INTO timelines (snapshot_id, snapshot_type) VALUES (?, 'yearly')"
+        (Only (show snapshot_id :: String)))
     when (monthly flags)
-        (putStrLn "Monthly")
+        (execute conn
+        "INSERT INTO timelines (snapshot_id, snapshot_type) VALUES (?, 'monthly')"
+        (Only (show snapshot_id :: String)))
     when (weekly flags)
-        (putStrLn "Weekly")
+        (execute conn
+        "INSERT INTO timelines (snapshot_id, snapshot_type) VALUES (?, 'weekly')"
+        (Only (show snapshot_id :: String)))
     when (daily flags)
-        (putStrLn "Daily")
+        (execute conn
+        "INSERT INTO timelines (snapshot_id, snapshot_type) VALUES (?, 'daily')"
+        (Only (show snapshot_id :: String)))
     when (hourly flags)
-        (putStrLn "Hourly")
+        (execute conn
+        "INSERT INTO timelines (snapshot_id, snapshot_type) VALUES (?, 'hourly')"
+        (Only (show snapshot_id :: String)))
     when (quater_hourly flags)
-        (putStrLn "Quater Hourly")
+        (execute conn
+        "INSERT INTO timelines (snapshot_id, snapshot_type) VALUES (?, 'quater-hourly')"
+        (Only (show snapshot_id :: String)))
+
+    -- Close the connection
+    close conn

@@ -1,0 +1,11 @@
+CREATE TABLE snapshots (
+    id integer primary key,
+    name text NOT NULL UNIQUE
+);
+CREATE TABLE timelines (
+    id integer PRIMARY KEY,
+    snapshot_id integer NOT NULL,
+    snapshot_type text NOT NULL,
+    FOREIGN KEY(snapshot_id) REFERENCES snapshots(id),
+    UNIQUE (snapshot_id, snapshot_type)
+);
