@@ -6,6 +6,7 @@ module Snapshot where
 import Control.Monad (when)
 import Control.Monad.Except
 import Database.SQLite.Simple
+import Database.SQLite.Simple.ToField
 import Data.List.Split (splitOn)
 import Data.Monoid ((<>))
 import System.Exit (ExitCode (ExitSuccess, ExitFailure))
@@ -27,15 +28,20 @@ instance Show SnapshotDate where
     show d = printf "%04d-%02d-%02d-%02d%02d%02d" (year d) (month d) (day d)
                                                   (hour d) (minute d) (second d)
 
--- What categories the current snapshot will fall under
-data SnapshotType = SnapshotType
-    { yearly        :: Bool
-    , monthly       :: Bool
-    , weekly        :: Bool
-    , daily         :: Bool
-    , hourly        :: Bool
-    , quater_hourly :: Bool
-    } deriving (Show)
+data SnapshotType = Yearly
+                  | Monthly
+                  | Weekly
+                  | Daily
+                  | Hourly
+                  | QuaterHourly
+
+instance ToField SnapshotType where
+    toField Yearly       = toField ("yearly" :: String)
+    toField Monthly      = toField ("monthly" :: String)
+    toField Weekly       = toField ("weekly" :: String)
+    toField Daily        = toField ("daily" :: String)
+    toField Hourly       = toField ("hourly" :: String)
+    toField QuaterHourly = toField ("quater_hourly" :: String)
 
 
 parseSnapshotDates :: (MonadError String m) => [String] -> m [SnapshotDate]
@@ -88,8 +94,8 @@ instance FromRow IdField where
 
 -- TODO switch to opaleye or something that gives us better type support
 --storeSnapshot :: (MonadError String m, MonadIO m) -> SnapshotDate -> SnapshotType -> m ()
-storeSnapshot :: SnapshotDate -> SnapshotType -> IO ()
-storeSnapshot s flags = do
+storeSnapshot :: SnapshotDate -> [SnapshotType] -> IO ()
+storeSnapshot s types = do
     -- Open db with foreign key support
     conn <- open "apfs-auto-snapshot.db"
     execute_ conn "PRAGMA foreign_keys = ON"
@@ -98,34 +104,16 @@ storeSnapshot s flags = do
     execute conn "INSERT INTO snapshots (name) VALUES (?)"
                  (Only (show s :: String))
     res <- query_ conn "SELECT last_insert_rowid()" :: IO [IdField]
-    let snapshot_id = primaryKey $ head res
+    let snapshotId = primaryKey $ head res
 
-    -- Insert the types of snapshots this is for in the timelines. Can be
-    -- multiple timelines at the same time.
-    when (yearly flags)
-        (execute conn
-        "INSERT INTO timelines (snapshot_id, snapshot_type) VALUES (?, 'yearly')"
-        (Only (show snapshot_id :: String)))
-    when (monthly flags)
-        (execute conn
-        "INSERT INTO timelines (snapshot_id, snapshot_type) VALUES (?, 'monthly')"
-        (Only (show snapshot_id :: String)))
-    when (weekly flags)
-        (execute conn
-        "INSERT INTO timelines (snapshot_id, snapshot_type) VALUES (?, 'weekly')"
-        (Only (show snapshot_id :: String)))
-    when (daily flags)
-        (execute conn
-        "INSERT INTO timelines (snapshot_id, snapshot_type) VALUES (?, 'daily')"
-        (Only (show snapshot_id :: String)))
-    when (hourly flags)
-        (execute conn
-        "INSERT INTO timelines (snapshot_id, snapshot_type) VALUES (?, 'hourly')"
-        (Only (show snapshot_id :: String)))
-    when (quater_hourly flags)
-        (execute conn
-        "INSERT INTO timelines (snapshot_id, snapshot_type) VALUES (?, 'quater-hourly')"
-        (Only (show snapshot_id :: String)))
+    -- Insert what type of snapshot this is
+    mapM_ (storeSnapshotType conn snapshotId) types
 
     -- Close the connection
     close conn
+  where
+    storeSnapshotType :: Connection -> Int -> SnapshotType -> IO ()
+    storeSnapshotType conn snapshotId snapshotType = execute conn query args
+      where
+        query = "INSERT INTO timelines (snapshot_id, snapshot_type) VALUES (?, ?)"
+        args  = (snapshotId, snapshotType)
