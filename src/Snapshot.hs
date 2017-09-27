@@ -6,15 +6,25 @@ module Snapshot where
 import Control.Monad (when)
 import Control.Monad.Except
 import Database.SQLite.Simple
+import Database.SQLite.Simple.FromField
+import Database.SQLite.Simple.Internal (Field(..))  -- TODO not great...
+import Database.SQLite.Simple.Ok
 import Database.SQLite.Simple.ToField
 import Data.List.Split (splitOn)
+import Data.Text (unpack)
 import Data.Monoid ((<>))
 import System.Exit (ExitCode (ExitSuccess, ExitFailure))
 import System.Process (readProcessWithExitCode)
 import Text.Printf (printf)
 import Text.Regex.PCRE.Heavy (scan, re)
 
+-- TODO move from String to Text everywhere
+-- TODO make all imports explicit
+-- TODO pass sqlite connection in everywhere that needs it instead of opening
+--      a new connection in each function
 
+
+-- TODO change to SnapshotName
 data SnapshotDate = SnapshotDate
     { year   :: !Int
     , month  :: !Int
@@ -30,6 +40,13 @@ instance Show SnapshotDate where
 
 instance ToField SnapshotDate where
     toField = toField . show
+
+instance FromField SnapshotDate where
+    fromField f@(Field (SQLText txt) _) =
+        case (parseDate $ unpack txt) of
+            Right name -> Ok name
+            Left err   -> returnError ConversionFailed f err
+    fromField f = returnError ConversionFailed f "need a text"
 
 data SnapshotType = Yearly
                   | Monthly
@@ -48,10 +65,18 @@ instance ToField SnapshotType where
 
 data IdField = IdField
     { primaryKey :: Int
-    } deriving (Show)
+    }
 
 instance FromRow IdField where
-  fromRow = IdField <$> field
+    fromRow = IdField <$> field
+
+data SnapshotField = SnapshotField
+    { snapshotId :: Int
+    , snapshotName :: SnapshotDate
+    }
+
+instance FromRow SnapshotField where
+    fromRow = SnapshotField <$> field <*> field
 
 
 parseSnapshotDates :: (MonadError String m) => [String] -> m [SnapshotDate]
@@ -93,6 +118,20 @@ listSnapshots = do
 
 createSnapshot :: (MonadError String m, MonadIO m) => m SnapshotDate
 createSnapshot = runSubprocess "/usr/bin/tmutil" ["localsnapshot"] "" >>= parseDate
+
+getStoredSnapshots :: IO [SnapshotDate]
+getStoredSnapshots = do
+    -- Open db with foreign key support
+    conn <- open "apfs-auto-snapshot.db"
+    execute_ conn "PRAGMA foreign_keys = ON"
+
+    -- Get all stored snapshots
+    res <- query_ conn "SELECT * FROM snapshots" :: IO [SnapshotField]
+
+    -- Close our connection and return the snapshot names only, I don't
+    -- think the caller needs the database primary key at all.
+    close conn
+    return $ map (snapshotName) res
 
 storeSnapshot :: SnapshotDate -> [SnapshotType] -> IO ()
 storeSnapshot s types = do
