@@ -121,33 +121,27 @@ createSnapshot = runSubprocess "/usr/bin/tmutil" ["localsnapshot"] "" >>= parseD
 
 getStoredSnapshots :: IO [SnapshotDate]
 getStoredSnapshots = do
-    -- Open db with foreign key support
     conn <- open "apfs-auto-snapshot.db"
     execute_ conn "PRAGMA foreign_keys = ON"
-
-    -- Get all stored snapshots
     res <- query_ conn "SELECT * FROM snapshots" :: IO [SnapshotField]
-
-    -- Close our connection and return the snapshot names only, I don't
-    -- think the caller needs the database primary key at all.
     close conn
     return $ map (snapshotName) res
 
-storeSnapshot :: SnapshotDate -> [SnapshotType] -> IO ()
-storeSnapshot s types = do
-    -- Open db with foreign key support
+deleteStoredSnapshot :: SnapshotDate -> IO ()
+deleteStoredSnapshot s = do
     conn <- open "apfs-auto-snapshot.db"
     execute_ conn "PRAGMA foreign_keys = ON"
+    execute conn "DELETE FROM snapshots WHERE name = (?)" (Only s)
+    close conn
 
-    -- Insert the snapshot and get the id of newly inserted row
+storeSnapshot :: SnapshotDate -> [SnapshotType] -> IO ()
+storeSnapshot s types = do
+    conn <- open "apfs-auto-snapshot.db"
+    execute_ conn "PRAGMA foreign_keys = ON"
     execute conn "INSERT INTO snapshots (name) VALUES (?)" (Only s)
     res <- query_ conn "SELECT last_insert_rowid()"
     let snapshotId = primaryKey $ head res
-
-    -- Insert what type of snapshot this is
     mapM_ (storeSnapshotType conn snapshotId) types
-
-    -- Close the connection
     close conn
   where
     storeSnapshotType :: Connection -> Int -> SnapshotType -> IO ()

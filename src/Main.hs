@@ -56,11 +56,13 @@ handleCli :: (MonadError String m, MonadIO m) => [SnapshotType] -> m ()
 handleCli []    = throwError "Specify at least one snapshot type (see --help)"
 handleCli types = do
     -- Remove any snapshots from the database that don't exist in time machine
-    -- any more (deleted outside of this program)
+    -- any more (deleted outside of this program).
+    -- TODO add lag warning about snapshots that are no longer found even
+    --      though they were expected.
     expectedSnaps <- liftIO $ getStoredSnapshots
     tmSnaps       <- listSnapshots
     let missingSnaps = filter (`notElem` tmSnaps) expectedSnaps
-    liftIO $ putStrLn $ show missingSnaps  -- TODO actually delete these
+    liftIO $ mapM_ deleteStoredSnapshot missingSnaps
 
     -- Create our new snapshot
     snapshot <- createSnapshot
