@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 module Main where
 
 import Snapshot
@@ -32,15 +33,13 @@ cliParser = SnapshotType
         ( long "quater_hourly"
        <> help "This snapshot is a quater_hourly snapshot")
 
--- TODO make this an ExceptT monad as well, and make main do runExceptT?
-handleCli :: SnapshotType -> IO ()
+--handleCli :: SnapshotType -> IO ()
+handleCli :: (MonadError String m, MonadIO m) => SnapshotType -> m ()
 handleCli (SnapshotType False False False False False False) =
-    printAndExit "Specify at least one snapshot type (see --help)"
+    throwError "Specify at least one snapshot type (see --help)"
 handleCli types = do
-    snapshot <- runExceptT createSnapshot
-    case snapshot of
-        Left er -> printAndExit er
-        Right s -> storeSnapshot s types
+    snapshot <- createSnapshot
+    liftIO $ storeSnapshot snapshot types
     -- TODO remove any snapshots from the database that don't exist
     --      in time machine any more (deleted outside of this program)
     -- TODO remove any snapshots from the database AND time machine that are
@@ -53,9 +52,13 @@ printAndExit errMsg = do
     exitWith $ ExitFailure 1
 
 main :: IO ()
-main = handleCli =<< execParser opts
-  where
-    opts = info (cliParser <**> helper)
-      ( fullDesc
-     <> progDesc "Create a new snapshot in the given timelines"
-     <> header "apfs-auto-snapshot - Automaticaaly craete and delete APFS snapshots")
+main = do
+    let opts = info (cliParser <**> helper)
+          ( fullDesc
+         <> progDesc "Create a new snapshot in the given timelines"
+         <> header "apfs-auto-snapshot - Automaticaaly craete and delete APFS snapshots")
+    parsedCli <- execParser opts
+    result <- runExceptT $ handleCli parsedCli
+    case result of
+        Right _  -> return ()
+        Left err -> printAndExit err

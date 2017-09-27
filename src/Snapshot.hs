@@ -14,7 +14,6 @@ import Text.Printf (printf)
 import Text.Regex.PCRE.Heavy (scan, re)
 
 
--- TODO make sure this is properly ordered by date
 data SnapshotDate = SnapshotDate
     { year   :: !Int
     , month  :: !Int
@@ -54,36 +53,30 @@ parseDate s = case scan dateRegex s of
   where
     dateRegex = [re|(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})|]
 
--- TODO have basically teh same code for checking exit status. Can we generalize it?
--- TODO using tail and init here isn't safe... should replace with Maybe variations?
+runSubprocess :: (MonadError String m, MonadIO m) => String -> [String] -> String -> m String
+runSubprocess binary args stdin = do
+    (code, stdout, stderr) <- liftIO $ readProcessWithExitCode binary args stdin
+    case code of
+        ExitSuccess   -> return stdout
+        ExitFailure _ -> throwError $ concat [ binary
+                                             , " exited with code "
+                                             , show code
+                                             , ": "
+                                             , stderr ]
+
 listSnapshots :: (MonadError String m, MonadIO m) => m [SnapshotDate]
 listSnapshots = do
-    let tmutil = "/usr/bin/tmutil"
-    let args   = ["listlocalsnapshotdates"]
-    let stdin  = ""
-    (code, stdout, stderr) <- liftIO $ readProcessWithExitCode tmutil args stdin
-    case code of
-        ExitFailure _ -> throwError $ concat [ "tmutil exited with code "
-                                             , show code
-                                             , ": "
-                                             , stderr ]
-        ExitSuccess   -> do
-            let dates = tail . init . splitOn "\n" $ stdout -- Strip header + trailing newline
-            parseSnapshotDates dates
+    -- Expected output should have a header, list of dates, and trailing
+    -- newline. Strip out the header and trailing newline, and work on
+    -- just the dates.
+    stdout <- runSubprocess "/usr/bin/tmutil"  ["listlocalsnapshotdates"] ""
+    let split = splitOn "\n" stdout
+    case split of
+      _:_:_ -> parseSnapshotDates . tail . init $ split
+      _     -> throwError $ "Unexpected output from tmutil: " <> stdout
 
 createSnapshot :: (MonadError String m, MonadIO m) => m SnapshotDate
-createSnapshot = do
-    let tmutil = "/usr/bin/tmutil"
-    let args   = ["localsnapshot"]
-    let stdin  = ""
-    (code, stdout, stderr) <- liftIO $ readProcessWithExitCode tmutil args stdin
-    case code of
-        ExitFailure _ -> throwError $ concat [ "tmutil exited with code "
-                                             , show code
-                                             , ": "
-                                             , stderr ]
-        ExitSuccess   -> parseDate stdout
-
+createSnapshot = runSubprocess "/usr/bin/tmutil" ["localsnapshot"] "" >>= parseDate
 
 data IdField = IdField
     { primaryKey :: Int
@@ -94,6 +87,7 @@ instance FromRow IdField where
 
 
 -- TODO switch to opaleye or something that gives us better type support
+--storeSnapshot :: (MonadError String m, MonadIO m) -> SnapshotDate -> SnapshotType -> m ()
 storeSnapshot :: SnapshotDate -> SnapshotType -> IO ()
 storeSnapshot s flags = do
     -- Open db with foreign key support
