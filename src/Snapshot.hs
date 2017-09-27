@@ -4,6 +4,7 @@
 module Snapshot where
 
 import Control.Monad (when)
+import Control.Monad.Except
 import Database.SQLite.Simple
 import Data.List.Split (splitOn)
 import Data.Monoid ((<>))
@@ -38,46 +39,50 @@ data SnapshotType = SnapshotType
     } deriving (Show)
 
 
-parseSnapshotDates :: [String] -> Either String [SnapshotDate]
+parseSnapshotDates :: (MonadError String m) => [String] -> m [SnapshotDate]
 parseSnapshotDates dates = sequence $ parseDate <$> dates
 
-parseDate :: String -> Either String SnapshotDate
+parseDate :: (MonadError String m) => String -> m SnapshotDate
 parseDate s = case scan dateRegex s of
-                  (_, y:mo:d:h:mi:s:[]):_ -> Right $ SnapshotDate (read y)
-                                                                  (read mo)
-                                                                  (read d)
-                                                                  (read h)
-                                                                  (read mi)
-                                                                  (read s)
-                  _ -> Left $ s <> " is not in the format YYYY-MM-DD-HHMMSS."
+                  (_, y:mo:d:h:mi:s:[]):_ -> return $ SnapshotDate (read y)
+                                                                   (read mo)
+                                                                   (read d)
+                                                                   (read h)
+                                                                   (read mi)
+                                                                   (read s)
+                  _ -> throwError $ s <> " is not in the format YYYY-MM-DD-HHMMSS."
   where
     dateRegex = [re|(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})|]
 
 -- TODO have basically teh same code for checking exit status. Can we generalize it?
-listSnapshots :: IO (Either String [SnapshotDate])
+-- TODO using tail and init here isn't safe... should replace with Maybe variations?
+listSnapshots :: (MonadError String m, MonadIO m) => m [SnapshotDate]
 listSnapshots = do
     let tmutil = "/usr/bin/tmutil"
     let args   = ["listlocalsnapshotdates"]
     let stdin  = ""
-    (code, stdout, stderr) <- readProcessWithExitCode tmutil args stdin
+    (code, stdout, stderr) <- liftIO $ readProcessWithExitCode tmutil args stdin
     case code of
-        ExitFailure _ -> return $ Left ("tmutil exited with code " <> show code
-                                        <> ": " <> stderr)
+        ExitFailure _ -> throwError $ concat [ "tmutil exited with code "
+                                             , show code
+                                             , ": "
+                                             , stderr ]
         ExitSuccess   -> do
-            -- Strip header and trailing newline
-            let dates = tail . init $ splitOn "\n" stdout
-            return $ parseSnapshotDates dates
+            let dates = tail . init . splitOn "\n" $ stdout -- Strip header + trailing newline
+            parseSnapshotDates dates
 
-createSnapshot :: IO (Either String SnapshotDate)
+createSnapshot :: (MonadError String m, MonadIO m) => m SnapshotDate
 createSnapshot = do
     let tmutil = "/usr/bin/tmutil"
     let args   = ["localsnapshot"]
     let stdin  = ""
-    (code, stdout, stderr) <- readProcessWithExitCode tmutil args stdin
+    (code, stdout, stderr) <- liftIO $ readProcessWithExitCode tmutil args stdin
     case code of
-        ExitFailure _ -> return $ Left ("tmutil exited with code " <> show code
-                                        <> ": " <> stderr)
-        ExitSuccess   -> return $ parseDate stdout
+        ExitFailure _ -> throwError $ concat [ "tmutil exited with code "
+                                             , show code
+                                             , ": "
+                                             , stderr ]
+        ExitSuccess   -> parseDate stdout
 
 
 data IdField = IdField

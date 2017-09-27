@@ -65,6 +65,7 @@ executable apfs-auto-snapshot
                      , MissingH
                      , optparse-applicative
                      , sqlite-simple
+                     , mtl
   
   -- Directories containing source files.
   hs-source-dirs:      src
