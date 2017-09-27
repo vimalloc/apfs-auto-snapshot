@@ -29,7 +29,6 @@ reqToTypes req
     | quater_hourly req = QuaterHourly : (reqToTypes req { quater_hourly = False })
     | otherwise         = []
 
-
 -- TODO use submcommands, so you can have other commands for explictly
 --      pruning, listing, purging, etc.
 cliParser :: Parser RequestedSnapshots
@@ -50,7 +49,7 @@ cliParser = RequestedSnapshots
         ( long "hourly"
        <> help "This snapshot is a hourly snapshot")
     <*> switch
-        ( long "quater_hourly"
+        ( long "quater-hourly"
        <> help "This snapshot is a quater_hourly snapshot")
 
 handleCli :: (MonadError String m, MonadIO m) => [SnapshotType] -> m ()
@@ -62,7 +61,6 @@ handleCli types = do
     --      in time machine any more (deleted outside of this program)
     -- TODO remove any snapshots from the database AND time machine that are
     --      now outside of the floating window limit
-
 
 printAndExit :: String -> IO ()
 printAndExit errMsg = do

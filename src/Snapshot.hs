@@ -28,6 +28,9 @@ instance Show SnapshotDate where
     show d = printf "%04d-%02d-%02d-%02d%02d%02d" (year d) (month d) (day d)
                                                   (hour d) (minute d) (second d)
 
+instance ToField SnapshotDate where
+    toField = toField . show
+
 data SnapshotType = Yearly
                   | Monthly
                   | Weekly
@@ -42,6 +45,13 @@ instance ToField SnapshotType where
     toField Daily        = toField ("daily" :: String)
     toField Hourly       = toField ("hourly" :: String)
     toField QuaterHourly = toField ("quater_hourly" :: String)
+
+data IdField = IdField
+    { primaryKey :: Int
+    } deriving (Show)
+
+instance FromRow IdField where
+  fromRow = IdField <$> field
 
 
 parseSnapshotDates :: (MonadError String m) => [String] -> m [SnapshotDate]
@@ -84,16 +94,6 @@ listSnapshots = do
 createSnapshot :: (MonadError String m, MonadIO m) => m SnapshotDate
 createSnapshot = runSubprocess "/usr/bin/tmutil" ["localsnapshot"] "" >>= parseDate
 
-data IdField = IdField
-    { primaryKey :: Int
-    } deriving (Show)
-
-instance FromRow IdField where
-  fromRow = IdField <$> field
-
-
--- TODO switch to opaleye or something that gives us better type support
---storeSnapshot :: (MonadError String m, MonadIO m) -> SnapshotDate -> SnapshotType -> m ()
 storeSnapshot :: SnapshotDate -> [SnapshotType] -> IO ()
 storeSnapshot s types = do
     -- Open db with foreign key support
@@ -101,9 +101,8 @@ storeSnapshot s types = do
     execute_ conn "PRAGMA foreign_keys = ON"
 
     -- Insert the snapshot and get the id of newly inserted row
-    execute conn "INSERT INTO snapshots (name) VALUES (?)"
-                 (Only (show s :: String))
-    res <- query_ conn "SELECT last_insert_rowid()" :: IO [IdField]
+    execute conn "INSERT INTO snapshots (name) VALUES (?)" (Only s)
+    res <- query_ conn "SELECT last_insert_rowid()"
     let snapshotId = primaryKey $ head res
 
     -- Insert what type of snapshot this is
