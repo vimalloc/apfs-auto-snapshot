@@ -119,6 +119,11 @@ listSnapshots = do
 createSnapshot :: (MonadError String m, MonadIO m) => m SnapshotDate
 createSnapshot = runSubprocess "/usr/bin/tmutil" ["localsnapshot"] "" >>= parseDate
 
+deleteSnapshot :: (MonadError String m, MonadIO m) => SnapshotDate -> m ()
+deleteSnapshot s = runSubprocess "/usr/bin/tmutil" args "" >>= \_ -> return ()
+  where
+    args = ["deletelocalsnapshots", show s]
+
 getStoredSnapshots :: IO [SnapshotDate]
 getStoredSnapshots = do
     conn <- open "apfs-auto-snapshot.db"
