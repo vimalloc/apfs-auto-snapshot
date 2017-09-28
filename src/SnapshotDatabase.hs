@@ -37,7 +37,18 @@ data StoredSnapshot = StoredSnapshot
 instance FromRow StoredSnapshot where
     fromRow = StoredSnapshot <$> field <*> field
 
-data LastInsertedRowId = LastInsertedRowId { lastInsertedRowId :: Int }
+data StoredTimeline = StoredTimeline
+    { timelineId :: Int
+    , snapshotId' :: Int
+    , snapshotType :: String
+    }
+
+instance FromRow StoredTimeline where
+    fromRow = StoredTimeline <$> field <*> field <*> field
+
+data LastInsertedRowId = LastInsertedRowId
+    { lastInsertedRowId :: Int
+    }
 
 instance FromRow LastInsertedRowId where
     fromRow = LastInsertedRowId <$> field
@@ -68,3 +79,24 @@ deleteStoredSnapshot conn snap = execute conn query args
   where
       query = "DELETE FROM snapshots WHERE id = (?)"
       args = (Only (snapshotId snap))
+
+deleteTimelines :: Connection -> SnapshotTimeline -> Int -> IO ()
+deleteTimelines conn timeline numToKeep = do
+    let timelineQuery = "SELECT * FROM timelines WHERE snapshot_type = (?)\
+                        \ ORDER BY snapshot_id DESC"
+    timelines <- query conn timelineQuery (Only timeline)
+    let toRemove = drop numToKeep timelines
+    mapM_ (deleteTimeline conn) toRemove
+  where
+    deleteTimeline :: Connection -> StoredTimeline -> IO ()
+    deleteTimeline conn tl = execute conn query args
+      where
+        query = "DELETE FROM timelines WHERE id = (?)"
+        args = (Only (timelineId tl))
+
+snapshotsWithoutTimelines :: Connection -> IO [StoredSnapshot]
+snapshotsWithoutTimelines conn = query_ conn query
+  where
+      query = "SELECT snapshots.* FROM snapshots LEFT JOIN timelines \
+              \ON snapshots.id = timelines.snapshot_id \
+              \WHERE timelines.snapshot_id IS NULL"

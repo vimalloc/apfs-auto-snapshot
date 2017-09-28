@@ -3,6 +3,7 @@
 
 module Main where
 
+import ConfigParse
 import SnapshotDatabase
 import TMSnapshot
 
@@ -21,6 +22,9 @@ data RequestedSnapshots = RequestedSnapshots
     , hourly        :: Bool
     , quater_hourly :: Bool
     } deriving (Show)
+
+
+-- TODO better way to compare TMSnapshots and Database snapshots metadata
 
 
 reqToTypes :: RequestedSnapshots -> [SnapshotTimeline]
@@ -59,6 +63,10 @@ cliParser = RequestedSnapshots
 handleCli :: (MonadError String m, MonadIO m) => [SnapshotTimeline] -> m ()
 handleCli []    = throwError "Specify at least one snapshot type (see --help)"
 handleCli timelines = do
+    -- Get our config file options about how many snapshots to keep
+    cp <- liftIO $ getConfigParser "apfs-auto-snapshot.cfg"
+    let timelineLimits = forceEither $ getTimelineConfig cp
+
     -- Open the database connection with foreign key support
     conn <- liftIO $ open "apfs-auto-snapshot.db"
     liftIO $ execute_ conn "PRAGMA foreign_keys = ON"
@@ -77,8 +85,20 @@ handleCli timelines = do
     storedSnap <- liftIO $ storeSnapshot conn tmSnap
     liftIO $ storeTimelines conn storedSnap timelines
 
-    -- TODO remove any snapshots from the database AND time machine that are
-    --      now outside of the floating window limit
+    -- Slide the timeline windows
+    liftIO $ deleteTimelines conn Yearly (yearlyLimit timelineLimits)
+    liftIO $ deleteTimelines conn Monthly (monthlyLimit timelineLimits)
+    liftIO $ deleteTimelines conn Weekly (weeklyLimit timelineLimits)
+    liftIO $ deleteTimelines conn Daily (dailyLimit timelineLimits)
+    liftIO $ deleteTimelines conn Hourly (hourlyLimit timelineLimits)
+    liftIO $ deleteTimelines conn QuaterHourly (quaterHourlyLimit timelineLimits)
+
+    -- Delete any backups that are now outside of the timeline window
+    toDeleteFromDb <- liftIO $ snapshotsWithoutTimelines conn
+    let toDeleteTmIds = map snapshotName toDeleteFromDb
+    let toDeleteFromTM = filter (\s -> (tmId s) `elem` toDeleteTmIds) tmSnaps
+    mapM_ deleteTMSnapshot toDeleteFromTM
+    liftIO $ mapM_ (deleteStoredSnapshot conn) toDeleteFromDb
 
 printAndExit :: String -> IO ()
 printAndExit errMsg = do
