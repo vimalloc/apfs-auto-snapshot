@@ -1,9 +1,13 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
+
 module Main where
 
-import Snapshot
+import SnapshotDatabase
+import TMSnapshot
 
 import Control.Monad.Except
+import Database.SQLite.Simple
 import Data.Either.Utils (forceEither) -- provided by MissingH
 import Data.Semigroup ((<>))
 import Options.Applicative
@@ -19,7 +23,7 @@ data RequestedSnapshots = RequestedSnapshots
     } deriving (Show)
 
 
-reqToTypes :: RequestedSnapshots -> [SnapshotType]
+reqToTypes :: RequestedSnapshots -> [SnapshotTimeline]
 reqToTypes req
     | yearly req        = Yearly : (reqToTypes req { yearly = False })
     | monthly req       = Monthly : (reqToTypes req { monthly = False })
@@ -52,21 +56,26 @@ cliParser = RequestedSnapshots
         ( long "quater-hourly"
        <> help "This snapshot is a quater_hourly snapshot")
 
-handleCli :: (MonadError String m, MonadIO m) => [SnapshotType] -> m ()
+handleCli :: (MonadError String m, MonadIO m) => [SnapshotTimeline] -> m ()
 handleCli []    = throwError "Specify at least one snapshot type (see --help)"
-handleCli types = do
+handleCli timelines = do
+    -- Open the database connection with foreign key support
+    conn <- liftIO $ open "apfs-auto-snapshot.db"
+    liftIO $ execute_ conn "PRAGMA foreign_keys = ON"
+
     -- Remove any snapshots from the database that don't exist in time machine
     -- any more (deleted outside of this program).
-    -- TODO add lag warning about snapshots that are no longer found even
-    --      though they were expected.
-    expectedSnaps <- liftIO $ getStoredSnapshots
-    tmSnaps       <- listSnapshots
-    let missingSnaps = filter (`notElem` tmSnaps) expectedSnaps
-    liftIO $ mapM_ deleteStoredSnapshot missingSnaps
+    -- TODO should maybe add logging if this finds a missing snapshot
+    expectedSnaps <- liftIO $ getStoredSnapshots conn
+    tmSnaps       <- listTMSnapshots
+    let tmSnapIds = map tmId tmSnaps
+    let missingSnaps = filter (\s -> (snapshotName s) `notElem` tmSnapIds) expectedSnaps
+    liftIO $ mapM_ (deleteStoredSnapshot conn) missingSnaps
 
     -- Create our new snapshot
-    snapshot <- createSnapshot
-    liftIO $ storeSnapshot snapshot types
+    tmSnap     <- createTMSnapshot
+    storedSnap <- liftIO $ storeSnapshot conn tmSnap
+    liftIO $ storeTimelines conn storedSnap timelines
 
     -- TODO remove any snapshots from the database AND time machine that are
     --      now outside of the floating window limit
