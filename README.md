@@ -19,7 +19,7 @@ you will not get the space back from that file until all the snapshots that cont
 that file have been deleted. You can manually delete snapshots using `tmutil`.
 Perhaps there is a way to mount snapshots as Read/Write (like in BTRFS) so you
 can remove only the deisred file instead of the entire snapshot, but I haven't
-looked into this yet.
+seen any information about this as of yet.
 
 ### Contributing
 Contributions are 100% welcome! I am ususally hanging out on freenode, feel
@@ -31,6 +31,8 @@ free to PM me (vimalloc) if you want to discuss anything :)
 * Wherever you cloned the repo, run `cabal sandbox init`
 * Install the dependencies with `cabal install --only-dependencies`
 * Run `cabal build` or `cabal run`
+
+You can restore files from the created snapshots by using time machine.
 
 If you want to have this work on a schedule, here is a quick and dirty crontab
 you could use until something better is put in place. Note that this may
