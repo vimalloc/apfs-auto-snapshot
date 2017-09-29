@@ -1,20 +1,27 @@
 # apfs-auto-snapshot
 Tool to automatically create and delete APFS snapshots on a sliding timeline.
 
-### Current Status
-This is in super early sages, and everything in it is prone to change. It may
-or may not work as expected, or at all. Use at your own risk! Do not rely on
-this for backups!
+# Shows Stopping Limitation
+Something (I'm guessing Time Machine) deletes snapshots out from under us. As
+`tmutil` seems to be the only way to make APFS snapshots at the moment, there
+isn't much that can be done about this I fear. See [#1](/../../issues/1) for
+the details. 
 
-### Known Limitations
-* Time Machine seems to sometimes delete the snapshots out from under us. As
-  `tmutil` seems to be the only way to make APFS snapshots at the moment, there
-  isn't much that can be done about this I fear. See [#1](/../../issues/1) for
-  the details. This doesn't stop the tool from working, but it might prevent
-  holding onto snapshots for as long as we expect them to be held on to.
+As it stands, I can't get more then 4 or 5 snapshots at a time
+before the invisible hand steps in and starts deleting older backups.
+Unless this is fixed or we find a new way around this, the sliding window
+feature of this project is basically unusable, and it would be simplier to
+just cron new snapshot creations with `tmutil`. Just don't expect them to
+stick around.
+  
+### Current Status
+Until the show stopping limitations get fix, this project is basically stalled. 
+However, if we can get around that issue, development on this will continue in
+full force. The project is not solidified at all, everything in it is prone to
+change going forward.
 
 ### Gotchas
-* When using APFS snapshots, if you delete a file and it is still in your snapshot,
+When using APFS snapshots, if you delete a file and it is still in your snapshot,
 you will not get the space back from that file until all the snapshots that contain
 that file have been deleted. You can manually delete snapshots using `tmutil`.
 Perhaps there is a way to mount snapshots as Read/Write (like in BTRFS) so you
@@ -33,6 +40,7 @@ free to PM me (vimalloc) if you want to discuss anything :)
 * Run `cabal build` or `cabal run`
 
 You can restore files from the created snapshots by using time machine.
+
 
 If you want to have this work on a schedule, here is a quick and dirty crontab
 you could use until something better is put in place. Note that this may
